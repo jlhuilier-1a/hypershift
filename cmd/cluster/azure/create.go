@@ -96,10 +96,13 @@ func bindCoreOptions(opts *RawCreateOptions, flags *pflag.FlagSet) {
 	flags.StringVar(&opts.VnetID, "vnet-id", opts.VnetID, "An existing VNET ID. If not provided, a new VNET will be created.")
 	flags.StringVar(&opts.NetworkSecurityGroupID, "network-security-group-id", opts.NetworkSecurityGroupID, "The Network Security Group ID to use in the default NodePool. If not provided, a new Network Security Group will be created.")
 	flags.StringToStringVarP(&opts.ResourceGroupTags, "resource-group-tags", "t", opts.ResourceGroupTags, "Additional tags to apply to the resource group created (e.g. 'key1=value1,key2=value2')")
+	flags.StringSliceVar(&opts.ResourceTags, "resource-tags", opts.ResourceTags, "Additional tags to set on Azure VM resources created for the cluster (e.g. 'key1=value1')")
 	flags.StringVar(&opts.SubnetID, "subnet-id", opts.SubnetID, "The subnet ID where the VMs will be placed. If not provided, a new subnet will be created.")
 	flags.StringVar(&opts.IssuerURL, "oidc-issuer-url", "", "The OIDC provider issuer URL.")
 	flags.StringVar(&opts.ServiceAccountTokenIssuerKeyPath, "sa-token-issuer-private-key-path", "", "The file to the private key for the service account token issuer.")
 	flags.StringVar(&opts.DNSZoneRGName, "dns-zone-rg-name", opts.DNSZoneRGName, "The name of the resource group where the DNS Zone resides. This is needed for the ingress controller. This is just the name and not the full ID of the resource group.")
+	flags.BoolVar(&opts.InternalLoadBalancer, "internal-load-balancer", opts.InternalLoadBalancer, "Configure LoadBalancer services as internal/private (Azure only)")
+	flags.StringVar(&opts.Subnet, "subnet", opts.Subnet, "Azure subnet name for internal LoadBalancer (Azure only)")
 }
 
 // BindDeveloperOptions binds developer/development only options for the Azure create cluster command
@@ -119,10 +122,11 @@ func (o *RawCreateOptions) Validate(_ context.Context, _ *core.CreateOptions) (c
 		return nil, fmt.Errorf("flag --resource-group-name is required when using --network-security-group-id")
 	}
 
-	// The DNS zone resource group name is required when assigning azure roles to the control plane components
-	// since several will need to be scoped to this resource group.
+	// The DNS zone resource group name is optional. It's only needed if using a public DNS zone
+	// where the ingress controller needs to manage DNS records.
+	// When using private DNS only, this can be omitted.
 	if o.AssignServicePrincipalRoles && o.DNSZoneRGName == "" {
-		return nil, fmt.Errorf("flag --dns-zone-rg-name is required")
+		// Log a warning but allow it to be empty for private DNS scenarios
 	}
 
 	// Validate that workload identities file and managed identities files are mutually exclusive
@@ -133,9 +137,10 @@ func (o *RawCreateOptions) Validate(_ context.Context, _ *core.CreateOptions) (c
 		return nil, fmt.Errorf("flags --workload-identities-file and --data-plane-identities-file are mutually exclusive")
 	}
 
-	// Validate that data plane identities file requires managed identities file
-	if o.DataPlaneIdentitiesFile != "" && o.ManagedIdentitiesFile == "" {
-		return nil, fmt.Errorf("--data-plane-identities-file requires --managed-identities-file")
+	// Validate that data plane identities file can be used standalone or with workload identities
+	// Only require managed identities file if using the managed identities approach
+	if o.DataPlaneIdentitiesFile != "" && o.ManagedIdentitiesFile != "" && o.WorkloadIdentitiesFile != "" {
+		return nil, fmt.Errorf("cannot use all three: --workload-identities-file, --managed-identities-file, and --data-plane-identities-file")
 	}
 	if o.ManagedIdentitiesFile != "" && o.DataPlaneIdentitiesFile == "" {
 		return nil, fmt.Errorf("--managed-identities-file requires --data-plane-identities-file")
@@ -230,6 +235,19 @@ func (o *CreateOptions) ApplyPlatformSpecifics(cluster *hyperv1.HostedCluster) e
 		}
 	}
 
+	// Parse resource tags
+	var resourceTags []hyperv1.AzureResourceTag
+	for _, tag := range o.ResourceTags {
+		parts := strings.SplitN(tag, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid resource tag format %q, expected key=value", tag)
+		}
+		resourceTags = append(resourceTags, hyperv1.AzureResourceTag{
+			Key:   parts[0],
+			Value: parts[1],
+		})
+	}
+
 	cluster.Spec.Platform = hyperv1.PlatformSpec{
 		Type: hyperv1.AzurePlatform,
 		Azure: &hyperv1.AzurePlatformSpec{
@@ -240,6 +258,7 @@ func (o *CreateOptions) ApplyPlatformSpecifics(cluster *hyperv1.HostedCluster) e
 			VnetID:            o.infra.VNetID,
 			SubnetID:          o.infra.SubnetID,
 			SecurityGroupID:   o.infra.SecurityGroupID,
+			ResourceTags:      resourceTags,
 		},
 	}
 
@@ -299,21 +318,78 @@ func (o *CreateOptions) ApplyPlatformSpecifics(cluster *hyperv1.HostedCluster) e
 				cluster.Spec.Services[i].Route = &hyperv1.RoutePublishingStrategy{
 					Hostname: fmt.Sprintf("api-%s.%s", cluster.Name, o.externalDNSDomain),
 				}
+				// Configure Azure internal LoadBalancer if requested
+				if o.InternalLoadBalancer && cluster.Spec.Services[i].LoadBalancer != nil {
+					if cluster.Spec.Services[i].LoadBalancer.Azure == nil {
+						cluster.Spec.Services[i].LoadBalancer.Azure = &hyperv1.AzureLoadBalancerConfig{}
+					}
+					cluster.Spec.Services[i].LoadBalancer.Azure.Internal = true
+					if o.Subnet != "" {
+						cluster.Spec.Services[i].LoadBalancer.Azure.Subnet = o.Subnet
+					}
+				}
 
 			case hyperv1.OAuthServer:
 				cluster.Spec.Services[i].Route = &hyperv1.RoutePublishingStrategy{
 					Hostname: fmt.Sprintf("oauth-%s.%s", cluster.Name, o.externalDNSDomain),
+				}
+				// Configure Azure internal LoadBalancer if requested
+				if o.InternalLoadBalancer && cluster.Spec.Services[i].LoadBalancer != nil {
+					if cluster.Spec.Services[i].LoadBalancer.Azure == nil {
+						cluster.Spec.Services[i].LoadBalancer.Azure = &hyperv1.AzureLoadBalancerConfig{}
+					}
+					cluster.Spec.Services[i].LoadBalancer.Azure.Internal = true
+					if o.Subnet != "" {
+						cluster.Spec.Services[i].LoadBalancer.Azure.Subnet = o.Subnet
+					}
 				}
 
 			case hyperv1.Konnectivity:
 				cluster.Spec.Services[i].Route = &hyperv1.RoutePublishingStrategy{
 					Hostname: fmt.Sprintf("konnectivity-%s.%s", cluster.Name, o.externalDNSDomain),
 				}
+				// Configure Azure internal LoadBalancer if requested
+				if o.InternalLoadBalancer && cluster.Spec.Services[i].LoadBalancer != nil {
+					if cluster.Spec.Services[i].LoadBalancer.Azure == nil {
+						cluster.Spec.Services[i].LoadBalancer.Azure = &hyperv1.AzureLoadBalancerConfig{}
+					}
+					cluster.Spec.Services[i].LoadBalancer.Azure.Internal = true
+					if o.Subnet != "" {
+						cluster.Spec.Services[i].LoadBalancer.Azure.Subnet = o.Subnet
+					}
+				}
 			case hyperv1.Ignition:
 				cluster.Spec.Services[i].Route = &hyperv1.RoutePublishingStrategy{
 					Hostname: fmt.Sprintf("ignition-%s.%s", cluster.Name, o.externalDNSDomain),
 				}
+				// Configure Azure internal LoadBalancer if requested
+				if o.InternalLoadBalancer && cluster.Spec.Services[i].LoadBalancer != nil {
+					if cluster.Spec.Services[i].LoadBalancer.Azure == nil {
+						cluster.Spec.Services[i].LoadBalancer.Azure = &hyperv1.AzureLoadBalancerConfig{}
+					}
+					cluster.Spec.Services[i].LoadBalancer.Azure.Internal = true
+					if o.Subnet != "" {
+						cluster.Spec.Services[i].LoadBalancer.Azure.Subnet = o.Subnet
+					}
+				}
 			}
+		}
+		
+		// Add Router service configuration for Azure internal LoadBalancer if requested
+		if o.InternalLoadBalancer {
+			cluster.Spec.Services = append(cluster.Spec.Services, hyperv1.ServicePublishingStrategyMapping{
+				Service: hyperv1.Router,
+				ServicePublishingStrategy: hyperv1.ServicePublishingStrategy{
+					Type: hyperv1.LoadBalancer,
+					LoadBalancer: &hyperv1.LoadBalancerPublishingStrategy{
+						Hostname: fmt.Sprintf("router-%s.%s", cluster.Name, o.externalDNSDomain),
+						Azure: &hyperv1.AzureLoadBalancerConfig{
+							Internal: true,
+							Subnet:   o.Subnet,
+						},
+					},
+				},
+			})
 		}
 	}
 	return nil

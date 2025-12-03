@@ -3157,6 +3157,52 @@ ManagedIdentity
 </tr>
 </tbody>
 </table>
+###AzureLoadBalancerConfig { #hypershift.openshift.io/v1beta1.AzureLoadBalancerConfig }
+<p>
+(<em>Appears on:</em>
+<a href="#hypershift.openshift.io/v1beta1.LoadBalancerPublishingStrategy">LoadBalancerPublishingStrategy</a>)
+</p>
+<p>
+<p>AzureLoadBalancerConfig contains Azure-specific LoadBalancer settings.</p>
+</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>internal</code></br>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>internal specifies whether the LoadBalancer should be internal (private) or external (public).
+When true, the LoadBalancer will be created with the &lsquo;service.beta.kubernetes.io/azure-load-balancer-internal: &ldquo;true&rdquo;&rsquo; annotation.
+Default: false (public LoadBalancer)</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>subnet</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>subnet is the name of the subnet within the VNet where the internal LoadBalancer should be created.
+Only applicable when internal is true.
+If not specified for an internal LoadBalancer, Azure will use the default subnet.</p>
+</td>
+</tr>
+</tbody>
+</table>
 ###AzureMarketplaceImage { #hypershift.openshift.io/v1beta1.AzureMarketplaceImage }
 <p>
 (<em>Appears on:</em>
@@ -3477,6 +3523,22 @@ Diagnostics
 If not specified, then Boot diagnostics will be disabled.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>resourceTags</code></br>
+<em>
+<a href="#hypershift.openshift.io/v1beta1.AzureResourceTag">
+[]AzureResourceTag
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>resourceTags is a list of additional tags to apply to Azure resources created for the NodePool machines.
+These tags will be merged with tags from the HostedCluster.Spec.Platform.Azure.ResourceTags.
+In case of conflicts, tags specified at the HostedCluster level take precedence.</p>
+</td>
+</tr>
 </tbody>
 </table>
 ###AzurePlatformSpec { #hypershift.openshift.io/v1beta1.AzurePlatformSpec }
@@ -3622,6 +3684,21 @@ string
 <p>tenantID is a unique identifier for the tenant where Azure resources will be created and managed in.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>resourceTags</code></br>
+<em>
+<a href="#hypershift.openshift.io/v1beta1.AzureResourceTag">
+[]AzureResourceTag
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>resourceTags is a list of additional tags to apply to Azure resources created for the cluster.
+These tags will be applied to all NodePools unless overridden at the NodePool level.</p>
+</td>
+</tr>
 </tbody>
 </table>
 ###AzureResourceManagedIdentities { #hypershift.openshift.io/v1beta1.AzureResourceManagedIdentities }
@@ -3667,6 +3744,47 @@ DataPlaneManagedIdentities
 <td>
 <p>dataPlane contains the client IDs of all the managed identities on the data plane needing to authenticate with
 Azure&rsquo;s API.</p>
+</td>
+</tr>
+</tbody>
+</table>
+###AzureResourceTag { #hypershift.openshift.io/v1beta1.AzureResourceTag }
+<p>
+(<em>Appears on:</em>
+<a href="#hypershift.openshift.io/v1beta1.AzureNodePoolPlatform">AzureNodePoolPlatform</a>, 
+<a href="#hypershift.openshift.io/v1beta1.AzurePlatformSpec">AzurePlatformSpec</a>)
+</p>
+<p>
+<p>AzureResourceTag is a tag to apply to Azure resources created for the cluster.</p>
+</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>key is the key of the tag.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>value</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>value is the value of the tag.</p>
 </td>
 </tr>
 </tbody>
@@ -9266,6 +9384,20 @@ string
 <em>(Optional)</em>
 <p>hostname is the name of the DNS record that will be created pointing to the LoadBalancer and passed through to consumers of the service.
 If omitted, the value will be inferred from the corev1.Service Load balancer type .status.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>azure</code></br>
+<em>
+<a href="#hypershift.openshift.io/v1beta1.AzureLoadBalancerConfig">
+AzureLoadBalancerConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>azure contains Azure-specific LoadBalancer configuration.</p>
 </td>
 </tr>
 </tbody>

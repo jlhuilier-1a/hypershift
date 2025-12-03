@@ -23,24 +23,10 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-const (
-	graphAPIEndpoint = "https://graph.microsoft.com/v1.0/servicePrincipals"
-)
-
 // RBACManager handles Azure RBAC operations
 type RBACManager struct {
 	subscriptionID string
 	creds          azcore.TokenCredential
-}
-
-// ServicePrincipalResponse represents the response from Microsoft Graph API
-type ServicePrincipalResponse struct {
-	Value []ServicePrincipal `json:"value"`
-}
-
-// ServicePrincipal represents a service principal from Microsoft Graph API
-type ServicePrincipal struct {
-	ID string `json:"id"`
 }
 
 // NewRBACManager creates a new RBACManager
@@ -67,7 +53,7 @@ func (r *RBACManager) AssignControlPlaneRoles(ctx context.Context, opts *CreateI
 		components[config.CIRO] = controlPlaneMIs.ControlPlane.ImageRegistry.ClientID
 	}
 
-	// Get an access token for Microsoft Graph API for getting the object IDs
+	// Get an access token for Azure Resource Manager API for getting the object IDs
 	token, err := r.getAzureToken()
 	if err != nil {
 		return err
@@ -108,7 +94,7 @@ func (r *RBACManager) AssignWorkloadIdentities(ctx context.Context, opts *Create
 		components[config.CIRO] = workloadIdentities.ImageRegistry.ClientID
 	}
 
-	// Get an access token for Microsoft Graph API for getting the object IDs
+	// Get an access token for Azure Resource Manager API for getting the object IDs
 	token, err := r.getAzureToken()
 	if err != nil {
 		return err
@@ -137,7 +123,7 @@ func (r *RBACManager) AssignWorkloadIdentities(ctx context.Context, opts *Create
 func (r *RBACManager) AssignDataPlaneRoles(ctx context.Context, opts *CreateInfraOptions, dataPlaneIdentities hyperv1.DataPlaneManagedIdentities, resourceGroupName string) error {
 	managedRG := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", r.subscriptionID, resourceGroupName)
 
-	// Get an access token for Microsoft Graph API for getting the object IDs
+	// Get an access token for Azure Resource Manager API for getting the object IDs
 	token, err := r.getAzureToken()
 	if err != nil {
 		return err
@@ -256,7 +242,7 @@ func (r *RBACManager) assignRole(ctx context.Context, infraID, component, assign
 
 func (r *RBACManager) getAzureToken() (azcore.AccessToken, error) {
 	token, err := r.creds.GetToken(context.Background(), policy.TokenRequestOptions{
-		Scopes: []string{"https://graph.microsoft.com/.default"},
+		Scopes: []string{"https://management.azure.com/.default"},
 	})
 	if err != nil {
 		return azcore.AccessToken{}, fmt.Errorf("failed to get access token: %w", err)
@@ -265,9 +251,25 @@ func (r *RBACManager) getAzureToken() (azcore.AccessToken, error) {
 	return token, nil
 }
 
+// ManagedIdentityListResponse represents the response from ARM API listing managed identities
+type ManagedIdentityListResponse struct {
+	Value []ManagedIdentityResource `json:"value"`
+}
+
+// ManagedIdentityResource represents a managed identity resource from ARM API
+type ManagedIdentityResource struct {
+	Properties ManagedIdentityProperties `json:"properties"`
+}
+
+// ManagedIdentityProperties contains the properties of a managed identity
+type ManagedIdentityProperties struct {
+	ClientID    string `json:"clientId"`
+	PrincipalID string `json:"principalId"`
+}
+
 func (r *RBACManager) getObjectIDFromClientID(clientID string, token azcore.AccessToken) (string, error) {
-	filterQuery := "$filter=appId eq '" + clientID + "'"
-	url := graphAPIEndpoint + "?" + strings.ReplaceAll(filterQuery, " ", "%20")
+	// Use ARM API to list managed identities across the subscription and find the one with matching clientId
+	url := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.ManagedIdentity/userAssignedIdentities?api-version=2023-01-31", r.subscriptionID)
 
 	// Make the API request
 	req, err := http.NewRequest("GET", url, nil)
@@ -290,18 +292,17 @@ func (r *RBACManager) getObjectIDFromClientID(clientID string, token azcore.Acce
 	}(resp.Body)
 
 	// Parse response
-	var result ServicePrincipalResponse
+	var result ManagedIdentityListResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if len(result.Value) == 0 {
-		return "", fmt.Errorf("no object id found for client id: %s", clientID)
+	// Find the managed identity with matching clientId
+	for _, identity := range result.Value {
+		if strings.EqualFold(identity.Properties.ClientID, clientID) {
+			return identity.Properties.PrincipalID, nil
+		}
 	}
 
-	if len(result.Value) > 1 {
-		return "", fmt.Errorf("more than one object id found for client id: %s", clientID)
-	}
-
-	return result.Value[0].ID, nil
+	return "", fmt.Errorf("no object id found for client id: %s", clientID)
 }

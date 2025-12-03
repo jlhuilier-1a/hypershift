@@ -17,6 +17,7 @@ type RawCreateOptions struct {
 	VnetID                           string
 	NetworkSecurityGroupID           string
 	ResourceGroupTags                map[string]string
+	ResourceTags                     []string
 	SubnetID                         string
 	RHCOSImage                       string
 	KMSUserAssignedCredsSecretName   string
@@ -30,6 +31,8 @@ type RawCreateOptions struct {
 	IssuerURL                        string
 	ServiceAccountTokenIssuerKeyPath string
 	MultiArch                        bool
+	InternalLoadBalancer             bool
+	Subnet                           string
 
 	NodePoolOpts *azurenodepool.RawAzurePlatformCreateOptions
 }

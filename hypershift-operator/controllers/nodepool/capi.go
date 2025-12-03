@@ -1173,6 +1173,11 @@ func (c *CAPI) listMachineTemplates() ([]client.Object, error) {
 }
 
 func (c *CAPI) getExistingMachineTemplate(ctx context.Context, template client.Object) error {
+	// For unit tests where no client is available, return NotFound error
+	if c.CreateOrUpdateProvider == nil {
+		return apierrors.NewNotFound(schema.GroupResource{}, "")
+	}
+	
 	templateName := ""
 
 	if c.nodePool.Spec.Management.UpgradeType == hyperv1.UpgradeTypeReplace {

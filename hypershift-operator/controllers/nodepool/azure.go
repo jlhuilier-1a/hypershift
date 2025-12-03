@@ -9,6 +9,8 @@ import (
 	"github.com/openshift/hypershift/support/releaseinfo"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -167,7 +169,41 @@ func getAzureMarketplaceMetadata(releaseImage *releaseinfo.ReleaseImage, arch st
 	return result, nil
 }
 
-func azureMachineTemplateSpec(nodePool *hyperv1.NodePool) (*capiazure.AzureMachineTemplateSpec, error) {
+// azureAdditionalTags merges tags from NodePool and HostedCluster specs.
+// HostedCluster tags take precedence over NodePool tags in case of conflicts.
+// This matches the AWS implementation for consistency across cloud providers.
+func azureAdditionalTags(nodePool *hyperv1.NodePool, hostedCluster *hyperv1.HostedCluster) capiazure.Tags {
+	// First, add NodePool-level tags
+	if len(nodePool.Spec.Platform.Azure.ResourceTags) > 0 {
+		tags := capiazure.Tags{}
+		for _, tag := range nodePool.Spec.Platform.Azure.ResourceTags {
+			tags[tag.Key] = tag.Value
+		}
+		// Then, add/override with HostedCluster-level tags (HostedCluster takes precedence)
+		if hostedCluster != nil && hostedCluster.Spec.Platform.Azure != nil {
+			for _, tag := range hostedCluster.Spec.Platform.Azure.ResourceTags {
+				tags[tag.Key] = tag.Value
+			}
+		}
+		return tags
+	}
+
+	// If no NodePool tags, just use HostedCluster tags (or return nil if none)
+	if hostedCluster != nil && hostedCluster.Spec.Platform.Azure != nil {
+		if len(hostedCluster.Spec.Platform.Azure.ResourceTags) > 0 {
+			tags := capiazure.Tags{}
+			for _, tag := range hostedCluster.Spec.Platform.Azure.ResourceTags {
+				tags[tag.Key] = tag.Value
+			}
+			return tags
+		}
+	}
+
+	// Return nil if no tags at all (avoids creating empty map)
+	return nil
+}
+
+func azureMachineTemplateSpec(nodePool *hyperv1.NodePool, hostedCluster *hyperv1.HostedCluster) (*capiazure.AzureMachineTemplateSpec, error) {
 	subnetName, err := azureutil.GetSubnetNameFromSubnetID(nodePool.Spec.Platform.Azure.SubnetID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine subnet name for Azure machine: %w", err)
@@ -224,6 +260,9 @@ func azureMachineTemplateSpec(nodePool *hyperv1.NodePool) (*capiazure.AzureMachi
 		}
 	}
 
+	// Apply merged tags from NodePool and HostedCluster (NodePool tags take precedence)
+	azureMachineTemplate.Template.Spec.AdditionalTags = azureAdditionalTags(nodePool, hostedCluster)
+
 	if nodePool.Spec.Platform.Azure.OSDisk.Persistence == hyperv1.EphemeralDiskPersistence {
 		// This is set to "None" if not explicitly set - https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/f44d953844de58e4b6fe8f51d88b0bf75a04e9ec/api/v1beta1/azuremachine_default.go#L54
 		// "VMs and VM Scale Set Instances using an ephemeral OS disk support only Readonly caching."
@@ -255,21 +294,39 @@ func (c *CAPI) azureMachineTemplate(ctx context.Context, templateNameGenerator f
 		return nil, fmt.Errorf("failed to apply Azure image defaults: %w", err)
 	}
 
-	spec, err := azureMachineTemplateSpec(c.nodePool)
+	desiredSpec, err := azureMachineTemplateSpec(c.nodePool, c.hostedCluster)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate AzureMachineTemplateSpec: %w", err)
 	}
 
-	templateName, err := templateNameGenerator(spec)
+	hashedSpec := *desiredSpec.DeepCopy()
+	// Set tags to nil so that they don't get considered in the hash calculation for the MachineTemplate name.
+	// This is to avoid a rolling upgrade when tags are changed.
+	hashedSpec.Template.Spec.AdditionalTags = nil
+	templateName, err := templateNameGenerator(hashedSpec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate template name: %w", err)
+	}
+
+	existingTemplate := &capiazure.AzureMachineTemplate{}
+	if err := c.getExistingMachineTemplate(ctx, existingTemplate); err == nil {
+		opts := cmp.Options{
+			cmpopts.IgnoreFields(capiazure.AzureMachineSpec{}, "AdditionalTags"),
+		}
+
+		if cmp.Equal(*desiredSpec, existingTemplate.Spec, opts...) {
+			// If a template already exists and the spec has not changed (excluding AdditionalTags), we should reuse the existing template name.
+			// This is especially important for clusters created before the change that omitted the AdditionalTags from template name generation.
+			// By reusing the existing template, we avoid unnecessary rolling upgrades.
+			templateName = existingTemplate.Name
+		}
 	}
 
 	template := &capiazure.AzureMachineTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: templateName,
 		},
-		Spec: *spec,
+		Spec: *desiredSpec,
 	}
 
 	return template, nil

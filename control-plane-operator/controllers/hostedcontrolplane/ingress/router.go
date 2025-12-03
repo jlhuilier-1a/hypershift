@@ -2,6 +2,7 @@ package ingress
 
 import (
 	_ "embed"
+	"strings"
 
 	hyperv1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	"github.com/openshift/hypershift/support/azureutil"
@@ -33,6 +34,51 @@ func ReconcileRouterService(svc *corev1.Service, internal, crossZoneLoadBalancin
 			svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled"] = "true"
 		}
 		util.ApplyAWSLoadBalancerTargetNodesAnnotation(svc, hcp)
+	}
+
+	if hcp.Spec.Platform.Type == hyperv1.AzurePlatform {
+		if svc.Annotations == nil {
+			svc.Annotations = map[string]string{}
+		}
+		
+		// Find the Router service configuration
+		var routerStrategy *hyperv1.ServicePublishingStrategy
+		for i := range hcp.Spec.Services {
+			if hcp.Spec.Services[i].Service == hyperv1.Router {
+				routerStrategy = &hcp.Spec.Services[i].ServicePublishingStrategy
+				break
+			}
+		}
+		
+		// Configure Azure LoadBalancer for router service
+		if routerStrategy != nil &&
+			routerStrategy.Type == hyperv1.LoadBalancer &&
+			routerStrategy.LoadBalancer != nil &&
+			routerStrategy.LoadBalancer.Azure != nil {
+			
+			azureConfig := routerStrategy.LoadBalancer.Azure
+			
+			// Configure Azure internal LoadBalancer if specified
+			if azureConfig.Internal {
+				svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal"] = "true"
+				if azureConfig.Subnet != "" {
+					svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal-subnet"] = azureConfig.Subnet
+				}
+				
+				// For Azure internal LoadBalancers, construct and set the external-DNS hostname annotation
+				// because Azure only provides an IP address, not a DNS hostname in the service status
+				if routerStrategy.LoadBalancer.Hostname != "" {
+					// Extract domain from the configured hostname (e.g., "api-cluster.domain.com" -> "domain.com")
+					// and construct router hostname as "router-{ClusterName}.{domain}"
+					hostnameWithoutPrefix := routerStrategy.LoadBalancer.Hostname
+					if idx := strings.Index(hostnameWithoutPrefix, "."); idx != -1 {
+						domain := hostnameWithoutPrefix[idx+1:]
+						routerHostname := "router-" + hcp.Name + "." + domain
+						svc.Annotations[hyperv1.ExternalDNSHostnameAnnotation] = routerHostname
+					}
+				}
+			}
+		}
 	}
 
 	if hcp.Spec.Platform.Type == hyperv1.GCPPlatform {

@@ -178,8 +178,9 @@ func (o ExternalDNSCredsSecret) Build() *corev1.Secret {
 type ExternalDNSProvider string
 
 const (
-	AWSExternalDNSProvider   ExternalDNSProvider = "aws"
-	AzureExternalDNSProvider ExternalDNSProvider = "azure"
+	AWSExternalDNSProvider          ExternalDNSProvider = "aws"
+	AzureExternalDNSProvider        ExternalDNSProvider = "azure"
+	AzurePrivateDNSProvider         ExternalDNSProvider = "azure-private-dns"
 )
 
 type ExternalDNSDeployment struct {
@@ -318,6 +319,10 @@ func (o ExternalDNSDeployment) Build() *appsv1.Deployment {
 			"--aws-zones-cache-duration=1h",
 		)
 	case AzureExternalDNSProvider:
+		deployment.Spec.Template.Spec.Containers[0].Args = append(deployment.Spec.Template.Spec.Containers[0].Args,
+			"--azure-config-file=/etc/provider/credentials",
+		)
+	case AzurePrivateDNSProvider:
 		deployment.Spec.Template.Spec.Containers[0].Args = append(deployment.Spec.Template.Spec.Containers[0].Args,
 			"--azure-config-file=/etc/provider/credentials",
 		)

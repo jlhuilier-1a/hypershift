@@ -856,7 +856,7 @@ type ServicePublishingStrategyMapping struct {
 	// OVNSbDb;OIDC are no-op and kept for backward compatibility.
 	// This field is immutable.
 	//
-	// +kubebuilder:validation:Enum=APIServer;OAuthServer;OIDC;Konnectivity;Ignition;OVNSbDb
+	// +kubebuilder:validation:Enum=APIServer;OAuthServer;OIDC;Konnectivity;Ignition;Router;OVNSbDb
 	// +immutable
 	// +required
 	Service ServiceType `json:"service"`
@@ -913,6 +913,7 @@ var (
 
 // ServiceType defines what control plane services can be exposed from the
 // management control plane.
+// +kubebuilder:validation:Enum=APIServer;OAuthServer;OIDC;Konnectivity;Ignition;Router;OVNSbDb
 type ServiceType string
 
 var (
@@ -927,6 +928,9 @@ var (
 
 	// Ignition is the control plane ignition service for nodes.
 	Ignition ServiceType = "Ignition"
+
+	// Router is the control plane router service for ingress.
+	Router ServiceType = "Router"
 
 	// OVNSbDb is the optional control plane ovn southbound database service used by OVNKubernetes CNI.
 	// Deprecated: This service is no longer used by OVNKubernetes CNI for >= 4.14.
@@ -961,6 +965,26 @@ type LoadBalancerPublishingStrategy struct {
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	Hostname string `json:"hostname,omitempty"`
+
+	// azure contains Azure-specific LoadBalancer configuration.
+	// +optional
+	Azure *AzureLoadBalancerConfig `json:"azure,omitempty"`
+}
+
+// AzureLoadBalancerConfig contains Azure-specific LoadBalancer settings.
+type AzureLoadBalancerConfig struct {
+	// internal specifies whether the LoadBalancer should be internal (private) or external (public).
+	// When true, the LoadBalancer will be created with the 'service.beta.kubernetes.io/azure-load-balancer-internal: "true"' annotation.
+	// Default: false (public LoadBalancer)
+	// +optional
+	// +kubebuilder:default=false
+	Internal bool `json:"internal,omitempty"`
+
+	// subnet is the name of the subnet within the VNet where the internal LoadBalancer should be created.
+	// Only applicable when internal is true.
+	// If not specified for an internal LoadBalancer, Azure will use the default subnet.
+	// +optional
+	Subnet string `json:"subnet,omitempty"`
 }
 
 // RoutePublishingStrategy specifies options for exposing a service as a Route.

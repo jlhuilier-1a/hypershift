@@ -71,6 +71,15 @@ func ReconcileService(svc *corev1.Service, strategy *hyperv1.ServicePublishingSt
 			if strategy.LoadBalancer != nil && strategy.LoadBalancer.Hostname != "" {
 				svc.Annotations[hyperv1.ExternalDNSHostnameAnnotation] = strategy.LoadBalancer.Hostname
 			}
+			// Handle Azure-specific LoadBalancer configuration
+			if hcp.Spec.Platform.Type == hyperv1.AzurePlatform && strategy.LoadBalancer != nil && strategy.LoadBalancer.Azure != nil {
+				if strategy.LoadBalancer.Azure.Internal {
+					svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal"] = "true"
+					if strategy.LoadBalancer.Azure.Subnet != "" {
+						svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal-subnet"] = strategy.LoadBalancer.Azure.Subnet
+					}
+				}
+			}
 			if isPrivate {
 				// AWS Private link requires endpoint and service endpoints to exist in the same underlying zone.
 				// To ensure that requirement is satisfied in Regions with more than 3 zones, managed services create subnets in all of them.
@@ -284,6 +293,18 @@ func ReconcileKonnectivityServerService(svc *corev1.Service, ownerRef config.Own
 				svc.Annotations = map[string]string{}
 			}
 			svc.Annotations[hyperv1.ExternalDNSHostnameAnnotation] = strategy.LoadBalancer.Hostname
+		}
+		// Handle Azure-specific LoadBalancer configuration
+		if hcp.Spec.Platform.Type == hyperv1.AzurePlatform && strategy.LoadBalancer != nil && strategy.LoadBalancer.Azure != nil {
+			if svc.Annotations == nil {
+				svc.Annotations = map[string]string{}
+			}
+			if strategy.LoadBalancer.Azure.Internal {
+				svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal"] = "true"
+				if strategy.LoadBalancer.Azure.Subnet != "" {
+					svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal-subnet"] = strategy.LoadBalancer.Azure.Subnet
+				}
+			}
 		}
 	case hyperv1.NodePort:
 		svc.Spec.Type = corev1.ServiceTypeNodePort

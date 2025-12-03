@@ -224,6 +224,22 @@ func TestCreateCluster(t *testing.T) {
 				"--image-generation=Gen1",
 			},
 		},
+		{
+			name: "with resource tags",
+			args: []string{
+				"--azure-creds=" + credentialsFile,
+				"--infra-json=" + infraFile,
+				"--rhcos-image=whatever",
+				"--render-sensitive",
+				"--name=example",
+				"--pull-secret=" + pullSecretFile,
+				"--managed-identities-file", filepath.Join(tempDir, "managedIdentities.json"),
+				"--data-plane-identities-file", filepath.Join(tempDir, "dataPlaneIdentities.json"),
+				"--resource-tags=environment=production",
+				"--resource-tags=cost-center=engineering",
+				"--resource-tags=team=platform",
+			},
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			flags := pflag.NewFlagSet(testCase.name, pflag.ContinueOnError)

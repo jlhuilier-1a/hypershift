@@ -1551,6 +1551,14 @@ func (r *HostedControlPlaneReconciler) reconcileRouterServiceStatus(ctx context.
 	if message, err = util.CollectLBMessageIfNotProvisioned(svc, messageCollector); err != nil || message != "" {
 		return
 	}
+	
+	// For Azure internal LoadBalancers with external-DNS annotation, use the DNS hostname
+	// instead of the IP address for the routerCanonicalHostname
+	if externalDNSHostname, hasAnnotation := svc.Annotations[hyperv1.ExternalDNSHostnameAnnotation]; hasAnnotation && externalDNSHostname != "" {
+		host = externalDNSHostname
+		return
+	}
+	
 	switch {
 	case svc.Status.LoadBalancer.Ingress[0].Hostname != "":
 		host = svc.Status.LoadBalancer.Ingress[0].Hostname

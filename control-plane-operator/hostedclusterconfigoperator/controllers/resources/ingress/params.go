@@ -50,6 +50,19 @@ func NewIngressParams(hcp *hyperv1.HostedControlPlane) *IngressParams {
 	if hcp.Spec.Platform.OpenStack != nil && hcp.Spec.Platform.OpenStack.IngressFloatingIP != "" {
 		loadBalancerIP = hcp.Spec.Platform.OpenStack.IngressFloatingIP
 	}
+	// Set LoadBalancerScope to Internal for Azure if the Router service is configured as internal
+	if hcp.Spec.Platform.Type == hyperv1.AzurePlatform {
+		for _, svc := range hcp.Spec.Services {
+			if svc.Service == hyperv1.Router &&
+				svc.ServicePublishingStrategy.Type == hyperv1.LoadBalancer &&
+				svc.ServicePublishingStrategy.LoadBalancer != nil &&
+				svc.ServicePublishingStrategy.LoadBalancer.Azure != nil &&
+				svc.ServicePublishingStrategy.LoadBalancer.Azure.Internal {
+				loadBalancerScope = v1.InternalLoadBalancer
+				break
+			}
+		}
+	}
 
 	// Extract endpointPublishingStrategy from OperatorConfiguration if configured
 	if hcp.Spec.OperatorConfiguration != nil && hcp.Spec.OperatorConfiguration.IngressOperator != nil {

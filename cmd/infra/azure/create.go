@@ -112,10 +112,16 @@ func (o *CreateInfraOptions) Run(ctx context.Context, l logr.Logger) (*CreateInf
 	result.ResourceGroupName = resourceGroupName
 	l.Info(msg, "name", resourceGroupName)
 
-	// Get base DNS zone ID
-	result.PublicZoneID, err = netMgr.GetBaseDomainID(ctx, o.BaseDomain)
-	if err != nil {
-		return nil, err
+	// Get base DNS zone ID only if DNS zone resource group is specified (for public DNS scenarios)
+	if o.DNSZoneRG != "" {
+		result.PublicZoneID, err = netMgr.GetBaseDomainID(ctx, o.BaseDomain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find public DNS zone (--dns-zone-rg-name was provided): %w", err)
+		}
+		l.Info("Found public DNS zone", "zoneID", result.PublicZoneID)
+	} else {
+		l.Info("Skipping public DNS zone lookup (--dns-zone-rg-name not provided), using private DNS only")
+		result.PublicZoneID = ""
 	}
 
 	// Handle network security group

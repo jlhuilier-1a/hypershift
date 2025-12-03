@@ -22,6 +22,7 @@ func TestAzureMachineTemplateSpec(t *testing.T) {
 	testCases := []struct {
 		name                             string
 		nodePool                         *hyperv1.NodePool
+		hostedCluster                    *hyperv1.HostedCluster
 		expectedAzureMachineTemplateSpec *capiazure.AzureMachineTemplateSpec
 		expectedErr                      bool
 		expectedErrMsg                   string
@@ -95,6 +96,185 @@ func TestAzureMachineTemplateSpec(t *testing.T) {
 							},
 						},
 						CapacityReservationGroupID: nil,
+					},
+				},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "tags from nodepool get copied",
+			nodePool: &hyperv1.NodePool{
+				Spec: hyperv1.NodePoolSpec{
+					Platform: hyperv1.NodePoolPlatform{
+						Type: hyperv1.AzurePlatform,
+						Azure: &hyperv1.AzureNodePoolPlatform{
+							Image: hyperv1.AzureVMImage{
+								Type:    hyperv1.ImageID,
+								ImageID: ptr.To("testImageID"),
+							},
+							SubnetID: "/subscriptions/testSubscriptionID/resourceGroups/testResourceGroupName/providers/Microsoft.Network/virtualNetworks/testVnetName/subnets/testSubnetName",
+							VMSize:   "Standard_D2_v2",
+							OSDisk: hyperv1.AzureNodePoolOSDisk{
+								SizeGiB:                30,
+								DiskStorageAccountType: "Standard_LRS",
+							},
+							ResourceTags: []hyperv1.AzureResourceTag{
+								{Key: "key", Value: "value"},
+							},
+						},
+					},
+				},
+			},
+			expectedAzureMachineTemplateSpec: &capiazure.AzureMachineTemplateSpec{
+				Template: capiazure.AzureMachineTemplateResource{
+					ObjectMeta: clusterv1.ObjectMeta{Labels: nil, Annotations: nil},
+					Spec: capiazure.AzureMachineSpec{
+						VMSize: "Standard_D2_v2",
+						Image: &capiazure.Image{
+							ID: ptr.To("testImageID"),
+						},
+						OSDisk: capiazure.OSDisk{
+							DiskSizeGB: ptr.To[int32](30),
+							ManagedDisk: &capiazure.ManagedDiskParameters{
+								StorageAccountType: "Standard_LRS",
+							},
+						},
+						SSHPublicKey: dummySSHKey,
+						AdditionalTags: capiazure.Tags{
+							"key": "value",
+						},
+						NetworkInterfaces: []capiazure.NetworkInterface{
+							{
+								SubnetName: "testSubnetName",
+							},
+						},
+					},
+				},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "tags from cluster get copied",
+			nodePool: &hyperv1.NodePool{
+				Spec: hyperv1.NodePoolSpec{
+					Platform: hyperv1.NodePoolPlatform{
+						Type: hyperv1.AzurePlatform,
+						Azure: &hyperv1.AzureNodePoolPlatform{
+							Image: hyperv1.AzureVMImage{
+								Type:    hyperv1.ImageID,
+								ImageID: ptr.To("testImageID"),
+							},
+							SubnetID: "/subscriptions/testSubscriptionID/resourceGroups/testResourceGroupName/providers/Microsoft.Network/virtualNetworks/testVnetName/subnets/testSubnetName",
+							VMSize:   "Standard_D2_v2",
+							OSDisk: hyperv1.AzureNodePoolOSDisk{
+								SizeGiB:                30,
+								DiskStorageAccountType: "Standard_LRS",
+							},
+						},
+					},
+				},
+			},
+			hostedCluster: &hyperv1.HostedCluster{
+				Spec: hyperv1.HostedClusterSpec{
+					Platform: hyperv1.PlatformSpec{
+						Azure: &hyperv1.AzurePlatformSpec{
+							ResourceTags: []hyperv1.AzureResourceTag{
+								{Key: "key", Value: "value"},
+							},
+						},
+					},
+				},
+			},
+			expectedAzureMachineTemplateSpec: &capiazure.AzureMachineTemplateSpec{
+				Template: capiazure.AzureMachineTemplateResource{
+					ObjectMeta: clusterv1.ObjectMeta{Labels: nil, Annotations: nil},
+					Spec: capiazure.AzureMachineSpec{
+						VMSize: "Standard_D2_v2",
+						Image: &capiazure.Image{
+							ID: ptr.To("testImageID"),
+						},
+						OSDisk: capiazure.OSDisk{
+							DiskSizeGB: ptr.To[int32](30),
+							ManagedDisk: &capiazure.ManagedDiskParameters{
+								StorageAccountType: "Standard_LRS",
+							},
+						},
+						SSHPublicKey: dummySSHKey,
+						AdditionalTags: capiazure.Tags{
+							"key": "value",
+						},
+						NetworkInterfaces: []capiazure.NetworkInterface{
+							{
+								SubnetName: "testSubnetName",
+							},
+						},
+					},
+				},
+			},
+			expectedErr: false,
+		},
+		{
+			name: "cluster tags take precedence over nodepool tags",
+			nodePool: &hyperv1.NodePool{
+				Spec: hyperv1.NodePoolSpec{
+					Platform: hyperv1.NodePoolPlatform{
+						Type: hyperv1.AzurePlatform,
+						Azure: &hyperv1.AzureNodePoolPlatform{
+							Image: hyperv1.AzureVMImage{
+								Type:    hyperv1.ImageID,
+								ImageID: ptr.To("testImageID"),
+							},
+							SubnetID: "/subscriptions/testSubscriptionID/resourceGroups/testResourceGroupName/providers/Microsoft.Network/virtualNetworks/testVnetName/subnets/testSubnetName",
+							VMSize:   "Standard_D2_v2",
+							OSDisk: hyperv1.AzureNodePoolOSDisk{
+								SizeGiB:                30,
+								DiskStorageAccountType: "Standard_LRS",
+							},
+							ResourceTags: []hyperv1.AzureResourceTag{
+								{Key: "nodepool-only", Value: "value"},
+								{Key: "cluster-and-nodepool", Value: "nodepool"},
+							},
+						},
+					},
+				},
+			},
+			hostedCluster: &hyperv1.HostedCluster{
+				Spec: hyperv1.HostedClusterSpec{
+					Platform: hyperv1.PlatformSpec{
+						Azure: &hyperv1.AzurePlatformSpec{
+							ResourceTags: []hyperv1.AzureResourceTag{
+								{Key: "cluster-only", Value: "value"},
+								{Key: "cluster-and-nodepool", Value: "cluster"},
+							},
+						},
+					},
+				},
+			},
+			expectedAzureMachineTemplateSpec: &capiazure.AzureMachineTemplateSpec{
+				Template: capiazure.AzureMachineTemplateResource{
+					ObjectMeta: clusterv1.ObjectMeta{Labels: nil, Annotations: nil},
+					Spec: capiazure.AzureMachineSpec{
+						VMSize: "Standard_D2_v2",
+						Image: &capiazure.Image{
+							ID: ptr.To("testImageID"),
+						},
+						OSDisk: capiazure.OSDisk{
+							DiskSizeGB: ptr.To[int32](30),
+							ManagedDisk: &capiazure.ManagedDiskParameters{
+								StorageAccountType: "Standard_LRS",
+							},
+						},
+						SSHPublicKey: dummySSHKey,
+						AdditionalTags: capiazure.Tags{
+							"cluster-only":          "value",
+							"cluster-and-nodepool":  "cluster",
+							"nodepool-only":         "value",
+						},
+						NetworkInterfaces: []capiazure.NetworkInterface{
+							{
+								SubnetName: "testSubnetName",
+							},
+						},
 					},
 				},
 			},
@@ -512,7 +692,7 @@ func TestAzureMachineTemplateSpec(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewGomegaWithT(t)
 
-			azureSpec, err := azureMachineTemplateSpec(tc.nodePool)
+			azureSpec, err := azureMachineTemplateSpec(tc.nodePool, tc.hostedCluster)
 			if tc.expectedErr {
 				g.Expect(err.Error()).To(ContainSubstring(tc.expectedErrMsg))
 			} else {
@@ -752,6 +932,13 @@ func TestAzureMachineTemplate(t *testing.T) {
 				Token: &Token{
 					ConfigGenerator: &ConfigGenerator{
 						nodePool: tc.nodePool,
+						hostedCluster: &hyperv1.HostedCluster{
+							Spec: hyperv1.HostedClusterSpec{
+								Platform: hyperv1.PlatformSpec{
+									Azure: &hyperv1.AzurePlatformSpec{},
+								},
+							},
+						},
 						rolloutConfig: &rolloutConfig{
 							releaseImage: releaseImg,
 						},

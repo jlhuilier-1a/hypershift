@@ -945,6 +945,30 @@ spec:
                             the SizeGB value must be less than or equal to 32,767
                           rule: '!has(self.diskStorageAccountType) || self.diskStorageAccountType
                             != ''UltraSSD_LRS'' || self.sizeGiB <= 32767'
+                      resourceTags:
+                        description: |-
+                          resourceTags is a list of additional tags to apply to Azure resources created for the NodePool machines.
+                          These tags will be merged with tags from the HostedCluster.Spec.Platform.Azure.ResourceTags.
+                          In case of conflicts, tags specified at the HostedCluster level take precedence.
+                        items:
+                          description: AzureResourceTag is a tag to apply to Azure
+                            resources created for the cluster.
+                          properties:
+                            key:
+                              description: key is the key of the tag.
+                              maxLength: 512
+                              minLength: 1
+                              type: string
+                            value:
+                              description: value is the value of the tag.
+                              maxLength: 256
+                              minLength: 0
+                              type: string
+                          required:
+                          - key
+                          - value
+                          type: object
+                        type: array
                       subnetID:
                         description: |-
                           subnetID is the subnet ID of an existing subnet where the nodes in the nodepool will be created. This can be a

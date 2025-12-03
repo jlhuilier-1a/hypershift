@@ -109,6 +109,30 @@ type AzureNodePoolPlatform struct {
 	// If not specified, then Boot diagnostics will be disabled.
 	// +optional
 	Diagnostics *Diagnostics `json:"diagnostics,omitempty"`
+
+	// resourceTags is a list of additional tags to apply to Azure resources created for the NodePool machines.
+	// These tags will be merged with tags from the HostedCluster.Spec.Platform.Azure.ResourceTags.
+	// In case of conflicts, tags specified at the HostedCluster level take precedence.
+	//
+	// +optional
+	ResourceTags []AzureResourceTag `json:"resourceTags,omitempty"`
+}
+
+// AzureResourceTag is a tag to apply to Azure resources created for the cluster.
+type AzureResourceTag struct {
+	// key is the key of the tag.
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	Key string `json:"key"`
+
+	// value is the value of the tag.
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=0
+	// +kubebuilder:validation:MaxLength=256
+	Value string `json:"value"`
 }
 
 // AzureVMImage represents the different types of boot image sources that can be provided for an Azure VM.
@@ -465,6 +489,12 @@ type AzurePlatformSpec struct {
 	// +required
 	// +kubebuilder:validation:MaxLength=255
 	TenantID string `json:"tenantID"`
+
+	// resourceTags is a list of additional tags to apply to Azure resources created for the cluster.
+	// These tags will be applied to all NodePools unless overridden at the NodePool level.
+	//
+	// +optional
+	ResourceTags []AzureResourceTag `json:"resourceTags,omitempty"`
 }
 
 // objectEncoding represents the encoding for the Azure Key Vault secret containing the certificate related to

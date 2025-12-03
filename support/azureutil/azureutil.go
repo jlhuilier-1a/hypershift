@@ -276,7 +276,10 @@ func GetServicePrincipalScopes(subscriptionID, managedResourceGroupName, nsgReso
 	managedRG := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, managedResourceGroupName)
 	nsgRG := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, nsgResourceGroupName)
 	vnetRG := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, vnetResourceGroupName)
-	dnsZoneRG := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, dnsZoneResourceGroupName)
+	var dnsZoneRG string
+	if dnsZoneResourceGroupName != "" {
+		dnsZoneRG = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, dnsZoneResourceGroupName)
+	}
 
 	// Default to the Contributor role
 	role := config.ContributorRoleDefinitionID
@@ -290,7 +293,10 @@ func GetServicePrincipalScopes(subscriptionID, managedResourceGroupName, nsgReso
 		scopes = append(scopes, nsgRG, vnetRG)
 	case config.Ingress:
 		role = config.IngressRoleDefinitionID
-		scopes = append(scopes, vnetRG, dnsZoneRG)
+		scopes = append(scopes, vnetRG)
+		if dnsZoneRG != "" {
+			scopes = append(scopes, dnsZoneRG)
+		}
 	case config.CPO:
 		scopes = append(scopes, nsgRG, vnetRG)
 		if assignCustomHCPRoles {

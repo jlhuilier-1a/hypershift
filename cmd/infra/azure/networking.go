@@ -57,7 +57,7 @@ func (n *NetworkManager) GetBaseDomainID(ctx context.Context, baseDomain string)
 			}
 		}
 	}
-	return "", fmt.Errorf("could not find any DNS zones in subscription")
+	return "", fmt.Errorf("public DNS zone '%s' not found in subscription", baseDomain)
 }
 
 // CreateSecurityGroup creates the security group the virtual network will use
@@ -176,7 +176,7 @@ func (n *NetworkManager) CreatePrivateDNSZone(ctx context.Context, resourceGroup
 	privateZoneParams := armprivatedns.PrivateZone{
 		Location: ptr.To("global"),
 	}
-	privateDNSZonePromise, err := privateZoneClient.BeginCreateOrUpdate(ctx, resourceGroupName, name+"-azurecluster."+baseDomain, privateZoneParams, nil)
+	privateDNSZonePromise, err := privateZoneClient.BeginCreateOrUpdate(ctx, resourceGroupName, name+"."+baseDomain, privateZoneParams, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create private DNS zone: %w", err)
 	}

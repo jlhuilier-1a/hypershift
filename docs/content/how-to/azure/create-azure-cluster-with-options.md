@@ -146,6 +146,113 @@ hypershift create nodepool azure \
 --disk-storage-account-type Standard_LRS
 ```
 
+## Adding Azure Resource Tags
+
+Azure resource tags can be added to Azure VMs created for your HostedCluster nodes. Tags can be specified at both the HostedCluster level (applying to all nodes) and the NodePool level (applying to specific node pools). When the same tag key is specified in both places, the HostedCluster tag value takes precedence.
+
+Tags are specified using the `--resource-tags` flag with a comma-separated list of `key=value` pairs.
+
+### CLI Example - HostedCluster with Resource Tags
+
+```
+${HYPERSHIFT_BINARY_PATH}/hypershift create cluster azure \
+--name "$CLUSTER_NAME" \
+--azure-creds $AZURE_CREDS \
+--location ${LOCATION} \
+--node-pool-replicas 2 \
+--base-domain $AZURE_BASE_DOMAIN \
+--pull-secret $PULL_SECRET \
+--generate-ssh \
+--release-image ${RELEASE_IMAGE} \
+--external-dns-domain ${MGMT_DNS_ZONE_NAME} \
+--resource-group-name "${MANAGED_RG_NAME}" \
+--vnet-id "${GetVnetID}" \
+--subnet-id "${GetSubnetID}" \
+--network-security-group-id "${GetNsgID}" \
+--managed-identities-file ${MANAGED_IDENTITIES_FILE} \
+--assign-service-principal-roles \
+--dns-zone-rg-name ${DNS_ZONE_RG_NAME} \
+--resource-tags environment=production,cost-center=engineering,team=platform
+```
+
+### CLI Example - NodePool with Resource Tags
+
+You can also specify resource tags when creating a NodePool. If the same tag key exists in both the HostedCluster and NodePool, the HostedCluster value will be used.
+
+```
+hypershift create nodepool azure \
+--name <name_of_nodepool> \
+--cluster-name <cluster_name> \
+--replicas <number_of_replicas> \
+--release-image <release_image> \
+--resource-tags workload-type=compute,sla-tier=gold
+```
+
+### NodePool CR Example
+
+Resource tags can also be set directly through the NodePool CR:
+
+```
+apiVersion: hypershift.openshift.io/v1beta1
+kind: NodePool
+metadata:
+  name: <nodepool_name>
+  namespace: clusters
+spec:
+  clusterName: <cluster_name>
+  platform:
+    azure:
+      resourceTags:
+      - key: workload-type
+        value: compute
+      - key: sla-tier
+        value: gold
+      vmsize: Standard_D4s_v4
+    type: Azure
+  replicas: <number_of_replicas>
+```
+
+## Using Azure Internal LoadBalancers
+
+By default, the Kubernetes API Server and OpenShift Router use Azure public load balancers. For private clusters or when network isolation is required, you can configure these services to use Azure internal (private) load balancers instead.
+
+When using an internal load balancer, you must specify the subnet where the load balancer should be created using the `--subnet` flag. The HyperShift operator will automatically:
+
+1. Add the required Azure annotations to the KAS and Router services
+2. Generate an external-DNS hostname for the Router in the format `router-{cluster}.{domain}`
+
+### CLI Example - Cluster with Internal Load Balancer
+
+```
+${HYPERSHIFT_BINARY_PATH}/hypershift create cluster azure \
+--name "$CLUSTER_NAME" \
+--azure-creds $AZURE_CREDS \
+--location ${LOCATION} \
+--node-pool-replicas 2 \
+--base-domain $AZURE_BASE_DOMAIN \
+--pull-secret $PULL_SECRET \
+--generate-ssh \
+--release-image ${RELEASE_IMAGE} \
+--external-dns-domain ${MGMT_DNS_ZONE_NAME} \
+--resource-group-name "${MANAGED_RG_NAME}" \
+--vnet-id "${GetVnetID}" \
+--subnet-id "${GetSubnetID}" \
+--network-security-group-id "${GetNsgID}" \
+--managed-identities-file ${MANAGED_IDENTITIES_FILE} \
+--assign-service-principal-roles \
+--dns-zone-rg-name ${DNS_ZONE_RG_NAME} \
+--internal-load-balancer \
+--subnet ${SUBNET_NAME}
+```
+
+!!! note
+
+    When using internal load balancers, ensure that:
+    
+    1. The subnet specified has sufficient IP addresses available for the load balancers
+    2. Your network configuration allows traffic from clients to the internal load balancer subnet
+    3. DNS resolution is configured to resolve the cluster domain names to the internal load balancer IPs
+
 ## Enabling KMS encryption
 This section walks through how to:
 
