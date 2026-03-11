@@ -69,10 +69,9 @@ func adaptOAuthConfig(cpContext component.WorkloadContext, cfg *osinv1.OsinServe
 	cfg.ServingInfo.CipherSuites = config.CipherSuites(configuration.GetTLSSecurityProfile())
 
 	masterUrl := fmt.Sprintf("https://%s:%d", cpContext.InfraStatus.OAuthHost, cpContext.InfraStatus.OAuthPort)
-	controlPlaneEndpoint := cpContext.HCP.Status.ControlPlaneEndpoint
 	cfg.OAuthConfig.MasterURL = masterUrl
 	cfg.OAuthConfig.MasterPublicURL = masterUrl
-	cfg.OAuthConfig.LoginURL = fmt.Sprintf("https://%s:%d", controlPlaneEndpoint.Host, controlPlaneEndpoint.Port)
+	cfg.OAuthConfig.LoginURL = masterUrl
 	// loginURLOverride can be used to specify an override for the oauth config login url. The need for this arises
 	// when the login a provider uses doesn't conform to the standard login url in hypershift. The only supported use case
 	// for this is IBMCloud Red Hat Openshift

@@ -99,6 +99,8 @@ func ReconcileRouterService(svc *corev1.Service, internal, crossZoneLoadBalancin
 	}
 	svc.Spec.Type = corev1.ServiceTypeLoadBalancer
 	svc.Spec.Selector = hcpRouterLabels()
+	// ServiceExternalTrafficPolicyLocal preserves the client source IP. see: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip
+	svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
 	foundHTTPS := false
 
 	for i, port := range svc.Spec.Ports {

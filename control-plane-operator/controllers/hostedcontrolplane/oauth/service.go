@@ -55,6 +55,28 @@ func ReconcileService(svc *corev1.Service, ownerRef config.OwnerRef, strategy *h
 		if ((platformType == hyperv1.IBMCloudPlatform) && (svc.Spec.Type != corev1.ServiceTypeNodePort)) || (platformType != hyperv1.IBMCloudPlatform) {
 			svc.Spec.Type = corev1.ServiceTypeClusterIP
 		}
+	case hyperv1.LoadBalancer:
+		// ADDED: Support LoadBalancer for network security zoning requirements (TNZ/ANZ)
+		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
+		// Add Azure-specific annotations for internal LoadBalancer and subnet
+		if platformType == hyperv1.AzurePlatform && strategy.LoadBalancer != nil && strategy.LoadBalancer.Azure != nil {
+			if svc.Annotations == nil {
+				svc.Annotations = map[string]string{}
+			}
+			if strategy.LoadBalancer.Azure.Internal {
+				svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal"] = "true"
+				if strategy.LoadBalancer.Azure.Subnet != "" {
+					svc.Annotations["service.beta.kubernetes.io/azure-load-balancer-internal-subnet"] = strategy.LoadBalancer.Azure.Subnet
+				}
+			}
+		}
+		// Add External DNS annotation if hostname is specified
+		if strategy.LoadBalancer != nil && strategy.LoadBalancer.Hostname != "" {
+			if svc.Annotations == nil {
+				svc.Annotations = map[string]string{}
+			}
+			svc.Annotations[hyperv1.ExternalDNSHostnameAnnotation] = strategy.LoadBalancer.Hostname
+		}
 	default:
 		return fmt.Errorf("invalid publishing strategy for OAuth service: %s", strategy.Type)
 	}
@@ -89,6 +111,23 @@ func ReconcileServiceStatus(svc *corev1.Service, route *routev1.Route, strategy 
 		}
 		port = svc.Spec.Ports[0].NodePort
 		host = strategy.NodePort.Address
+	case hyperv1.LoadBalancer:
+		// ADDED: Support LoadBalancer status reporting
+		// Use configured hostname if specified (similar to Route strategy)
+		if strategy.LoadBalancer != nil && strategy.LoadBalancer.Hostname != "" {
+			host = strategy.LoadBalancer.Hostname
+			port = int32(OAuthServerPort)
+			return
+		}
+		// Fallback to LoadBalancer ingress status
+		if len(svc.Status.LoadBalancer.Ingress) > 0 {
+			if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
+				host = svc.Status.LoadBalancer.Ingress[0].Hostname
+			} else if svc.Status.LoadBalancer.Ingress[0].IP != "" {
+				host = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+		}
+		port = int32(OAuthServerPort)
 	}
 	return
 }

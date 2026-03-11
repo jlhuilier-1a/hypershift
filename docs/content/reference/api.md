@@ -6282,6 +6282,7 @@ string
 <a href="#hypershift.openshift.io/v1beta1.HostedCluster">HostedCluster</a>)
 </p>
 <p>
+<p>REMOVED: Azure Route-only validation to support network security zoning requirements (TNZ/ANZ)</p>
 </p>
 <table>
 <thead>
